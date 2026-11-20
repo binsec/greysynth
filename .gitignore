@@ -1,0 +1,21 @@
+# Build and editor artifacts (anywhere, including outside_tools/)
+_build/
+__pycache__/
+_opam/
+.DS_Store
+.vscode/
+
+# Local experiment outputs (repository root only)
+/binsec
+/.binsec
+/complex_expressions.txt
+/example.ml
+/example_config.json
+/experiments
+/loki500.zip
+/obfuscation
+/results.zip
+/results
+/results100
+/sample_fail.json
+/count_equiv/

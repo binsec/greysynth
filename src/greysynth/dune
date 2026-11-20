@@ -1,0 +1,29 @@
+; GreySynth core: OES engine, synthesis passes and backends, driver
+(library
+ (public_name greysynth.core)
+ (name greysynth)
+ (modules greysynth logging config synth_backends oes synthesis)
+ (flags
+  (:standard -open Binsec -open Smt -open Libsse -open Libterm -open Yojson -w "-58"))
+ (libraries binsec.smt binsec.sse binsec.sse.term yojson greysynth.sample_evaluator greysynth.utils greysynth.string_to_sexpr containers str unix xyntia xyntia.utils))
+
+; Concrete evaluation on shared input samples (see sample_evaluator.ml);
+; its own library because the tools use it too
+(library
+ (public_name greysynth.sample_evaluator)
+ (name sample_evaluator)
+ (modules sample_evaluator)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries binsec.smt binsec.sse binsec.sse.term greysynth.utils))
+
+; Main CLI
+(executable
+ (public_name greysynth)
+ (name greysynth_cli)
+ (modules greysynth_cli)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  greysynth.cli_input
+  greysynth.core))

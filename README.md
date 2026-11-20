@@ -1,0 +1,113 @@
+# GreySynth
+
+GreySynth is an efficient grey-box deobfuscation framework. It lifts black-box deobfuscators (like [Xyntia](https://github.com/binsec/xyntia)) to simplify obfuscated code including Mixed Boolean-Arithmetic (MBA) expressions. 
+
+GreySynth combines two techniques:
+
+- **OES** (output-equivalence simplification): every sub-expression is
+  evaluated on a shared set of input samples, and each node is replaced by the
+  smallest node in the expression that behaves the same on all samples.
+- **Synthesis**: sub-trees are sampled and handed to a black-box synthesizer
+  (Xyntia by default, also Syntia or cvc5), and replaced by the result when it
+  is smaller. **CHS** applies this to sub-trees cut at increasing depths
+  ("horizons"); *global synthesis* applies it bottom-up to every complete
+  sub-tree.
+
+## Building
+
+Requirements: OCaml 5.3 with [opam](https://opam.ocaml.org/). To build GreySynth proceed as follows:
+
+```sh
+cd <greysynth-folder>
+opam switch create . 5.3.0 -y
+eval $(opam env)
+opam install goblint-cil=2.0.8 yojson containers
+opam pin outside_tools/binsec_no_simplification
+opam pin outside_tools/xyntia
+make && make install
+```
+
+You can now run GreySynth direclty using `greysynth`.
+
+## Running
+
+```sh
+greysynth -obf -string "(x|y) + (x&y)" -gt -string "x + y" default.json
+```
+
+- `-obf <src>`: the expression to simplify (required); `-gt <src>`: an optional
+  ground truth, used for equivalence checks and in the report.
+- `<src>` is `-string "<expr>"`, `-string-file <file>`, or
+  `-cil <file.c> <function>` (the function's return expression).
+- `-size <n>`: default bit width of unsized variables and constants (64).
+
+Expression syntax: C-like operators (`+ - * & | ^ ~ << >> >>s / % ...`),
+variables with an optional width (`x<32>`), see
+`src/parsers/string_to_sexpr.mli`.
+
+Progress is logged to stderr; a JSON report is printed to stdout (`syn_expr`,
+`syn_sz`, `equiv`, `time`, plus per-pass statistics).
+
+
+## Configuration
+
+The last argument is a JSON file; `default.json` is a working example.
+
+| Key | Meaning |
+|---|---|
+| `oes` | Run OES first (and after each CHS horizon, and once at the end). |
+| `oes_extended`, `local_extend`, `local_extend_depth` | Extra vocabulary added to the OES cache. |
+| `oes_fixedpoint` | Repeat OES until the size stops decreasing. |
+| `fast_simplify` | OES extension with relational vocabulary (not in the CCS'26 paper). |
+| `global_synthesis` | Run global (bottom-up, untruncated) synthesis. |
+| `chs` | Run CHS. |
+| `local_cache` | Reuse synthesis results for nodes with the same outhash. |
+| `synthesizer` | `xyntia`, `syntia` or `cvc5`. Backend-specific keys: `xsmir_ops` (Xyntia), `synthesizer_cmd`, `synthesizer_script`. |
+| `synthesis_timeout`, `synthesis_repeat` | Per-call synthesizer timeout (s) and attempts. |
+| `add_constants_to_synthesis` | Pass the sub-tree's constants to the synthesizer. |
+| `nb_samples` | Number of input samples used by OES and synthesis. |
+| `check_equiv`, `equiv_timeout` | Prove each pass's result equivalent to the ground truth with an SMT solver. |
+| `reject_non_equiv_simplifications` | Prove each synthesized rewrite and drop it if it is not equivalent. |
+| `total_timeout` | Overall time limit (s); the best result so far is reported. |
+| `balanced_tree`, `sampling_strategy` | Currently only recorded in the report. |
+
+
+## Known limitations
+
+**Shifts by a variable amount can be simplified unsoundly.** The sample
+evaluator (`src/greysynth/sample_evaluator.ml`) reduces shift amounts modulo
+64, as x86 does, whereas SMT-LIB bit-vector semantics, used for the
+equivalence checks, gives 0 (or the sign bits for `>>s`) once the amount
+reaches the bit width. Expressions that differ only for such large amounts get
+the same signature, and OES can merge them. For example
+`(x << (y & 63)) ^ (x << y)` is simplified to `0`, although it is not
+equivalent (counter-example: `x = 1`, `y = 2^63`).
+
+In addition, `eval_label`, which computes the synthesis samples of truncated
+sub-trees, does not reduce shift amounts, so a synthesis sample can mix both
+semantics.
+
+Shifts by a constant smaller than the width, the common case in MBA, are not
+affected. With a ground truth and `check_equiv`, an affected result shows up as
+`"equiv": "no"`.
+
+# Cite us
+
+```bibtex
+@inproceedings{10.1145/3830454.3846695,
+author = {Attias, Vidal and Menguy, Gr{\'e}goire and Bellec, Nicolas and Bardin, S{\'e}bastien and Marion, Jean-Yves},
+title = {Redefining Grey-Box Deobfuscation through Context-Aware Program Synthesis, and Application to MBA},
+year = {2026},
+isbn = {9798400728716},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3830454.3846695},
+doi = {10.1145/3830454.3846695},
+booktitle = {Proceedings of the 2026 ACM SIGSAC Conference on Computer and Communications Security},
+pages = {6759–6773},
+numpages = {15},
+keywords = {deobfuscation, reverse engineering, mixed boolean-arithmetic, grey-box, program synthesis},
+location = {The Hague, Netherlands},
+series = {CCS '26}
+}
+```

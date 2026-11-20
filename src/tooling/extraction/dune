@@ -1,0 +1,26 @@
+; Pull MBA expressions out of C sources and binaries
+
+(executable
+ (public_name c_extractor)
+ (name c_extractor)
+ (modules c_extractor)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  unix
+  goblint-cil
+  yojson
+  greysynth.utils
+  greysynth.mba_classifier))
+
+(executable
+ (public_name bin_extract)
+ (name bin_extract)
+ (modules bin_extract)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  yojson
+  greysynth.binary_to_expr
+  greysynth.mba_classifier
+  greysynth.utils))

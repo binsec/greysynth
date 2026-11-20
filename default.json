@@ -1,0 +1,22 @@
+{
+  "oes": true,
+  "oes_extended": false,
+  "oes_fixedpoint": false,
+  "local_extend": false,
+  "local_extend_depth": 4,
+  "synthesizer": "xyntia",
+  "global_synthesis": false,
+  "chs": true,
+  "local_cache": true,
+  "synthesis_timeout": 2,
+  "synthesis_repeat": 1,
+  "check_equiv": false,
+  "equiv_timeout": 1,
+  "balanced_tree": true,
+  "sampling_strategy": "real",
+  "add_constants_to_synthesis": true,
+  "reject_non_equiv_simplifications": false,
+  "nb_samples": 100,
+  "total_timeout": 600,
+  "xsmir_ops": ""
+}

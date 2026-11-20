@@ -1,0 +1,3 @@
+; outside_tools/ holds third-party tools (GAMBA, a binsec fork, ...), not built
+; here: GreySynth builds against the binsec installed with opam.
+(dirs :standard \ outside_tools)

@@ -1,0 +1,20 @@
+(library
+ (public_name greysynth.utils)
+ (name greysynth_utils)
+ (modules utils)
+ (flags
+  (:standard -open Binsec -open Smt -open Libsse -open Libterm -w "-58"))
+ (libraries xyntia binsec.smt binsec.sse binsec.sse.term))
+
+; Syntactic MBA classification (bitwise / linear / polynomial / ...)
+(library
+ (public_name greysynth.mba_classifier)
+ (name mba_classifier)
+ (modules mba_classifier)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  binsec.smt
+  binsec.sse
+  binsec.sse.term
+  greysynth.utils))

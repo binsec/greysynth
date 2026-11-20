@@ -1,0 +1,19 @@
+{
+  "time": 5,
+  "repeat": 1,
+  "infrules": "mba",
+  "nb_samples": 100,
+  "equiv_timeout": 10,
+  "ops": "mba",
+
+  "dist": "logarith",
+  "heuristic": "ils",
+  "maxdepth": "max_int",
+  "formula": "None",
+  "smt": "None",
+  "smt_to": "None",
+  "cegis": false,
+  "noguidance": false,
+  "rules_combinator": "product",
+  "check": false
+}

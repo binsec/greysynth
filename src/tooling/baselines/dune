@@ -1,0 +1,18 @@
+; Competing simplifiers run standalone, for comparison with greysynth
+
+(executable
+ (public_name hardcoded_rules_simplifier)
+ (name hardcoded_rules_simplifier)
+ (modules hardcoded_rules_simplifier)
+ (flags
+  (:standard -open Binsec -open Smt -open Libsse -open Libterm -open Yojson -w "-58"))
+ (libraries
+  unix
+  binsec.smt
+  binsec.sse
+  binsec.sse.term
+  yojson
+  containers
+  greysynth.utils
+  greysynth.sample_evaluator
+  greysynth.cli_input))

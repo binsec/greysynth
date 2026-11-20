@@ -1,0 +1,242 @@
+(**************************************************************************)
+(*  This file is part of BINSEC.                                          *)
+(*                                                                        *)
+(*  Copyright (C) 2026-2027                                               *)
+(*    CEA (Commissariat à l'énergie atomique et aux énergies              *)
+(*         alternatives)                                                  *)
+(*                                                                        *)
+(*  You can redistribute it and/or modify it under the terms of the GNU   *)
+(*  Lesser General Public License as published by the Free Software       *)
+(*  Foundation, version 2.1.                                              *)
+(*                                                                        *)
+(*  It is distributed in the hope that it will be useful,                 *)
+(*  but WITHOUT ANY WARRANTY; without even the implied warranty of        *)
+(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *)
+(*  GNU Lesser General Public License for more details.                   *)
+(*                                                                        *)
+(*  See the GNU Lesser General Public License version 2.1                 *)
+(*  for more details (enclosed in the file licenses/LGPLv2.1).            *)
+(*                                                                        *)
+(**************************************************************************)
+
+(* The main GreySynth file
+
+It runs the enabled passes in order -- OES, fast_simplify, global synthesis,
+CHS -- then a final OES clean-up, and checks equivalence against the ground
+truth.
+
+*)
+
+open Greysynth_utils.Utils
+open Logging
+open Config
+open Oes
+open Synthesis
+
+(* Helper that checks equiv of [e] if ground truth is set AND check_equiv is
+   enabled *)
+let check_equiv gt ~tag (verdict : equiv_t ref) e =
+  match gt with
+  | Some gt when !c_check_equiv ->
+      let result, time, _ = are_equivalent e gt (Some !c_equiv_timeout) in
+      verdict := result;
+      _log_dim tag "equiv=%s (%.2fs)" (equiv_to_str result) time
+  | _ -> verdict := Disabled
+
+(* One OES pass, without the logging and stats of [oes_with_logs]. *)
+let oes_quiet e = fst (linear_simplify e)
+
+(* Synthesis at increasing horizons (2 .. depth), with an OES pass after
+   each horizon when OES is enabled. Updates [best] after every horizon, so a
+   timeout keeps the horizons already done. *)
+let chs gt best =
+  c_current_mode_is_global := false;
+  let start = Unix.gettimeofday () in
+  let horizon = ref 2 in
+  while !horizon <= depth_of_expr !best do
+    check_timeout ();
+    best := simplify_with_horizon !horizon !c_synthesis_timeout !c_synthesis_repeat !best;
+    if !c_oes then best := oes_quiet !best;
+    incr horizon
+  done;
+  let time = Unix.gettimeofday () -. start in
+  log_chs_size_after := size_of_expr !best;
+  log_chs_time := time;
+  check_equiv gt ~tag:"CHS" log_chs_is_equiv !best;
+  _log_ok "CHS" "done  size=%d  (%.2fs)" !log_chs_size_after time
+
+(* Run the enabled passes in order, each on the previous one's output, and
+   return the result. [best] is a ref rather than a value threaded through
+   the passes because the total timeout is an exception raised in the middle
+   of a pass: the ref still holds the output of the last completed pass, which
+   is what we return then. *)
+let run_passes gt obf =
+  let best = ref obf in
+  (try
+     if !c_oes then (
+       best := oes_with_logs !best;
+       check_equiv gt ~tag:"OES" log_linear_is_equiv !best);
+
+     (* fast_simplify is the extension that was designed to extend OES by including more semantics in the OES's cache, it is NOT present in the CCS'26 paper *)
+     if !c_fast_simplify then (
+       best := fast_simplify_with_logs !best;
+       check_equiv gt ~tag:"fast_simplify" log_linear_is_equiv !best);
+
+     if !c_global_synthesis then (
+       c_current_mode_is_global := true;
+       best := simplify_global !c_synthesis_timeout !c_synthesis_repeat !best;
+       check_equiv gt ~tag:"global" log_global_is_equiv !best);
+     if !c_chs then chs gt best
+   with Timeout_exception ->
+     g_has_timedout := true;
+     _log_warn "greysynth" "timeout reached");
+  !best
+
+(* ── Reporting ─────────────────────────────────────────────────── *)
+
+let print_summary ~initial_size ~total_time gt result =
+  _log_header "Result";
+  Format.eprintf "  %d -> \027[1;32m%d\027[0m  (%.2fs)%s\n" initial_size
+    (size_of_expr result)
+    total_time
+    (if !g_has_timedout then "  \027[33m[timed out]\027[0m" else "");
+  Option.iter
+    (fun gt -> Format.eprintf "  ground truth  %d\n" (size_of_expr gt))
+    gt;
+  Format.eprintf "  expr  %s\n%!" (pp result)
+
+let floats l = `List (List.map (fun x -> `Float x) l)
+let ints l = `List (List.map (fun x -> `Int x) l)
+let sum_values tbl = Hashtbl.fold (fun _ v acc -> acc + v) tbl 0
+
+(* horizon -> value tables *)
+let per_horizon tbl to_json =
+  `Assoc (Hashtbl.fold (fun h v acc -> (string_of_int h, to_json v) :: acc) tbl [])
+
+let attempts_json attempts =
+  `List
+    (List.map
+       (fun (size, success, time, is_simplification) ->
+         `Assoc
+           [
+             ("input_size", `Int size);
+             ("success", `Bool success);
+             ("time", `Float time);
+             ("is_simplification", `Bool is_simplification);
+           ])
+       attempts)
+
+(* A rewrite found by synthesis, with pass-specific [extra] fields. *)
+let rule_json src dst count extra =
+  `Assoc
+    ([
+       ("lhs_expr", `String (pp src));
+       ("lhs_size", `Int (size_of_expr src));
+       ("rhs_expr", `String (pp dst));
+       ("rhs_size", `Int (size_of_expr dst));
+       ("count", `Int count);
+     ]
+    @ extra)
+
+let report_json ~initial_size ~total_time gt result =
+  let equiv r = `String (equiv_to_str !r) in
+  let ground_truth =
+    match gt with
+    | Some gt -> [ ("gt_sz", `Int (size_of_expr gt)); ("gt_expr", `String (pp gt)) ]
+    | None -> []
+  in
+  let global_rules =
+    Hashtbl.fold
+      (fun (src, dst) (count, times) acc ->
+        rule_json src dst count [ ("times", floats times) ] :: acc)
+      log_global_rules_found []
+  in
+  let chs_rules =
+    Hashtbl.fold
+      (fun (src, dst) (count, horizons, times) acc ->
+        rule_json src dst count
+          [ ("horizons", ints horizons); ("times", floats times) ]
+        :: acc)
+      log_chs_rules_found []
+  in
+  `Assoc
+    ([
+       ("obf_sz", `Int initial_size);
+       ("syn_expr", `String (pp result));
+       ("syn_sz", `Int (size_of_expr result));
+       ("equiv", equiv log_final_is_equiv);
+       ("time", `Float total_time);
+       ("uniq_semantic", `Int !tmp_uniq_semantic);
+       ("has_timed_out", `Bool !g_has_timedout);
+     ]
+    @ ground_truth
+    @ [
+        (* configuration *)
+        ("is_linear_enabled", `Bool !c_oes);
+        ("is_fast_simplify_enabled", `Bool !c_fast_simplify);
+        ("is_global_enabled", `Bool !c_global_synthesis);
+        ("is_chs_enabled", `Bool !c_chs);
+        ("local_cache", `Bool !c_local_cache);
+        ("balanced_tree", `Bool !c_balanced_tree);
+        ("check_equiv", `Bool !c_check_equiv);
+        ("sampling_strategy", `String (string_of_sampling !c_sampling_strategy));
+        ("nb_samples", `Int !c_nb_samples);
+        ("synthesizer", `String !c_synthesizer_name);
+        (* OES ("linear") pass *)
+        ("linear_size_after", `Int !log_linear_size_after);
+        ("linear_time", `Float !log_linear_time);
+        ("linear_number_simplifications", `Int !log_linear_number_simplifications);
+        ( "linear_number_unique_hash_before",
+          `Int (Hashtbl.length log_linear_number_unique_hash_before) );
+        ( "linear_number_unique_hash_after",
+          `Int (Hashtbl.length log_linear_number_unique_hash_after) );
+        ("linear_is_equiv", equiv log_linear_is_equiv);
+        (* global synthesis *)
+        ("global_size_after", `Int !log_global_size_after);
+        ("global_time", `Float !log_global_time);
+        ("global_number_simplifications", `Int !log_global_number_simplifications);
+        ("global_synthesis_attempts", attempts_json !log_global_synthesis_attempts);
+        ("global_horizon", `Int !log_global_horizon);
+        ("global_rules_found", `List global_rules);
+        ("global_is_equiv", equiv log_global_is_equiv);
+        (* CHS *)
+        ("chs_size_after", `Int !log_chs_size_after);
+        ("chs_time", `Float !log_chs_time);
+        ("chs_total_cache_hits", `Int (sum_values log_chs_cache_hits_per_horizon));
+        ("chs_total_processed", `Int (sum_values log_chs_process_per_horizon));
+        ("chs_number_simplifications", `Int !log_chs_number_simplifications);
+        ("chs_synthesis_attempts", attempts_json !log_chs_synthesis_attempts);
+        ( "chs_time_per_horizon",
+          per_horizon log_chs_time_per_horizon (fun t -> `Float t) );
+        ( "chs_cache_hits_per_horizon",
+          per_horizon log_chs_cache_hits_per_horizon (fun n -> `Int n) );
+        ( "chs_process_per_horizon",
+          per_horizon log_chs_process_per_horizon (fun n -> `Int n) );
+        ("chs_rules_found", `List chs_rules);
+        ("chs_is_equiv", equiv log_chs_is_equiv);
+      ])
+
+(* ── Entry point ───────────────────────────────────────────────── *)
+
+let run obf config gt =
+  load_config_from_json config;
+  log_obfuscated_expression := obf;
+  g_start_time := Unix.gettimeofday ();
+
+  let initial_size = size_of_expr obf in
+  _log "greysynth" "input size=%d%s" initial_size
+    (if !g_total_timeout > 0. then
+       Printf.sprintf "  (timeout=%.0fs)" !g_total_timeout
+     else "");
+
+  let result = run_passes gt obf in
+  (* final OES clean-up, skipped once out of time *)
+  let result =
+    if !c_oes && not !g_has_timedout then oes_quiet result else result
+  in
+  check_equiv gt ~tag:"final" log_final_is_equiv result;
+
+  let total_time = Unix.gettimeofday () -. !g_start_time in
+  print_summary ~initial_size ~total_time gt result;
+  Format.printf "%s\n"
+    (Yojson.pretty_to_string (report_json ~initial_size ~total_time gt result))

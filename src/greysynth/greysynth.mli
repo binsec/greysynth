@@ -1,0 +1,29 @@
+(**************************************************************************)
+(*  This file is part of BINSEC.                                          *)
+(*                                                                        *)
+(*  Copyright (C) 2026-2027                                               *)
+(*    CEA (Commissariat à l'énergie atomique et aux énergies              *)
+(*         alternatives)                                                  *)
+(*                                                                        *)
+(*  You can redistribute it and/or modify it under the terms of the GNU   *)
+(*  Lesser General Public License as published by the Free Software       *)
+(*  Foundation, version 2.1.                                              *)
+(*                                                                        *)
+(*  It is distributed in the hope that it will be useful,                 *)
+(*  but WITHOUT ANY WARRANTY; without even the implied warranty of        *)
+(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *)
+(*  GNU Lesser General Public License for more details.                   *)
+(*                                                                        *)
+(*  See the GNU Lesser General Public License version 2.1                 *)
+(*  for more details (enclosed in the file licenses/LGPLv2.1).            *)
+(*                                                                        *)
+(**************************************************************************)
+
+(** GreySynth: simplification of obfuscated (MBA) expressions. *)
+
+val run : Sexpr.Expr.t -> string -> Sexpr.Expr.t option -> unit
+(** [run obf config_file gt] loads the JSON configuration, runs the enabled
+    passes on [obf] (OES, fast simplify, global synthesis then CHS) within
+    the total timeout, logs progress to stderr and prints a JSON report to
+    stdout. The ground truth [gt], if given, is only used for equivalence
+    checks and in the report. *)

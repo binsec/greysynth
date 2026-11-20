@@ -1,0 +1,56 @@
+; Parsers: build Sexpr.Expr.t from strings, C sources and binaries
+
+; String expressions (uses Binsec's parser)
+(library
+ (public_name greysynth.string_to_sexpr)
+ (name string_to_sexpr)
+ (modules string_to_sexpr)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  binsec.parser
+  binsec.smt
+  binsec.sse
+  binsec.sse.term))
+
+; C function return expressions (via CIL)
+(library
+ (public_name greysynth.cil_to_sexpr)
+ (name cil_to_sexpr)
+ (modules cil_to_sexpr)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  goblint-cil
+  binsec.smt
+  binsec.sse
+  binsec.sse.term))
+
+; Command-line -obf/-gt expression loading shared by the simplifier CLIs
+(library
+ (public_name greysynth.cli_input)
+ (name cli_input)
+ (modules cli_input)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  binsec.smt
+  binsec.sse
+  binsec.sse.term
+  greysynth.string_to_sexpr
+  greysynth.cil_to_sexpr))
+
+; Binaries (Binsec SSE plugin + high-level API)
+(library
+ (public_name greysynth.binary_to_expr)
+ (name binary_to_expr)
+ (modules binary_to_expr)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-27-32-38-58"))
+ (libraries
+  binsec.smt
+  binsec.sse
+  binsec.sse.term
+  binsec.sse_register
+  yojson
+  greysynth.utils))

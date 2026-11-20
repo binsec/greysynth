@@ -1,0 +1,40 @@
+; Generate and transform benchmark expressions
+
+(executable
+ (public_name mba_obfuscator)
+ (name mba_obfuscator)
+ (modules mba_obfuscator)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  unix
+  yojson
+  greysynth.utils
+  greysynth.cil_to_sexpr
+  greysynth.string_to_sexpr
+  greysynth.mba_classifier))
+
+(executable
+ (public_name mba_noiser)
+ (name mba_noiser)
+ (modules mba_noiser)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  yojson
+  greysynth.utils
+  greysynth.sample_evaluator
+  greysynth.cil_to_sexpr
+  greysynth.string_to_sexpr))
+
+(executable
+ (public_name expr_to_c)
+ (name expr_to_c)
+ (modules expr_to_c)
+ (flags
+  (:standard -open Binsec -open Libsse -open Libterm -w "-58"))
+ (libraries
+  unix
+  yojson
+  greysynth.utils
+  greysynth.string_to_sexpr))
